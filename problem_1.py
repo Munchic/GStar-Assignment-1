@@ -54,6 +54,17 @@ class FlashAttention2Function(torch.autograd.Function):
                         V_tile = V_bh[k_start:k_end, :]
                         
                         S_ij = (Q_tile @ K_tile.transpose(-1, -2)) * scale
+
+                        m_ij = S_ij.max(axis=-1)
+                        m_i_new = max(m_i, m_ij)
+
+                        P_ij = torch.exp(S_ij - m_i_new)
+                        scale_factor = torch.exp(m_i - m_i_new)
+
+                        l_i = scale_factor * l_i + P_ij.sum(axis=-1)
+                        o_i = scale_factor * o_i + P_ij @ V_tile
+
+                        m_i = m_i_new
                         
                         # --- STUDENT IMPLEMENTATION REQUIRED HERE ---
                         # 1. Apply causal masking if is_causal is True.
