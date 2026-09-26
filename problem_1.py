@@ -62,14 +62,14 @@ class FlashAttention2Function(torch.autograd.Function):
                             mask = torch.zeros((Q_tile.shape[0], K_tile.shape[0]), device=Q.device, dtype=Q.dtype)
                         
                         S_ij = (Q_tile @ K_tile.transpose(-1, -2)) * scale + mask  # Q_tile_sz * K_tile_sz
-                        m_ij, _ = torch.max(S_ij, dim=1)  
+                        m_ij, _ = torch.max(S_ij, dim=1)
                         m_i_new = torch.max(m_i, m_ij)  # Q_tile_sz
 
                         P_ij = torch.exp(S_ij - m_i_new.unsqueeze(-1)).bfloat16()  # Q_tile_sz * K_tile_sz
-                        scale_factor = torch.exp(m_i - m_i_new)
+                        scale_factor = torch.exp(m_i - m_i_new)  # Q_tile_sz
 
-                        l_i = scale_factor * l_i + P_ij.sum(axis=-1)
-                        o_i = scale_factor.unsqueeze(-1) * o_i + P_ij @ V_tile
+                        l_i = scale_factor * l_i + P_ij.sum(axis=-1)  # Q_tile_sz
+                        o_i = scale_factor.unsqueeze(-1) * o_i + P_ij @ V_tile  # Q_tile_sz x d
 
                         m_i = m_i_new
 
