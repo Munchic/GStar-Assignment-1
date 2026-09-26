@@ -30,15 +30,15 @@ class FlashAttention2Function(torch.autograd.Function):
         # Main loops: Iterate over each batch and head
         for b in range(B):
             for h in range(H):
-                Q_bh = Q[b, h, :, :]
-                K_bh = K[b, h, :, :]
-                V_bh = V[b, h, :, :]
+                Q_bh = Q[b, h, :, :]  # N x d
+                K_bh = K[b, h, :, :]  # N x d 
+                V_bh = V[b, h, :, :]  # N x d
 
                 # Loop over query tiles
                 for i in range(N_Q_tiles):
                     q_start = i * Q_TILE_SIZE
                     q_end = min((i + 1) * Q_TILE_SIZE, N_Q)
-                    Q_tile = Q_bh[q_start:q_end, :]
+                    Q_tile = Q_bh[q_start:q_end, :]  # Q_tile_sz x d
 
                     # Initialize accumulators for this query tile
                     o_i = torch.zeros_like(Q_tile, dtype=Q.dtype)
@@ -50,35 +50,29 @@ class FlashAttention2Function(torch.autograd.Function):
                         k_start = j * K_TILE_SIZE
                         k_end = min((j + 1) * K_TILE_SIZE, N_K)
 
-                        K_tile = K_bh[k_start:k_end, :]
-                        V_tile = V_bh[k_start:k_end, :]
+                        K_tile = K_bh[k_start:k_end, :]  # K_tile_sz x d
+                        V_tile = V_bh[k_start:k_end, :]  # K_tile_sz x d
                         
-                        S_ij = (Q_tile @ K_tile.transpose(-1, -2)) * scale
+                        # --- STUDENT IMPLEMENTATION REQUIRED HERE ---
 
-                        m_ij = S_ij.max(axis=-1)
-                        m_i_new = max(m_i, m_ij)
+                        if is_causal:
+                            offset = q_start - k_start + 1  # if i increases (we're further down sequence), hide less
+                            mask = torch.full((Q_tile.shape[0], K_tile.shape[0]), float('-inf'), device=Q.device, dtype=Q.dtype).triu(offset)
+                        else:
+                            mask = torch.zeros((Q_tile.shape[0], K_tile.shape[0]), device=Q.device, dtype=Q.dtype)
+                        
+                        S_ij = (Q_tile @ K_tile.transpose(-1, -2)) * scale + mask  # Q_tile_sz * K_tile_sz
+                        m_ij, _ = torch.max(S_ij, dim=1)  
+                        m_i_new = torch.max(m_i, m_ij)  # Q_tile_sz
 
-                        P_ij = torch.exp(S_ij - m_i_new)
+                        P_ij = torch.exp(S_ij - m_i_new.unsqueeze(-1)).bfloat16()  # Q_tile_sz * K_tile_sz
                         scale_factor = torch.exp(m_i - m_i_new)
 
                         l_i = scale_factor * l_i + P_ij.sum(axis=-1)
-                        o_i = scale_factor * o_i + P_ij @ V_tile
+                        o_i = scale_factor.unsqueeze(-1) * o_i + P_ij @ V_tile
 
                         m_i = m_i_new
-                        
-                        # --- STUDENT IMPLEMENTATION REQUIRED HERE ---
-                        # 1. Apply causal masking if is_causal is True.
-                        #
-                        # 2. Compute the new running maximum
-                        #
-                        # 3. Rescale the previous accumulators (o_i, l_i)
-                        #
-                        # 4. Compute the probabilities for the current tile, P_tilde_ij = exp(S_ij - m_new).
-                        #
-                        # 5. Accumulate the current tile's contribution to the accumulators to update l_i and o_i
-                        #
-                        # 6. Update the running max for the next iteration
-                        
+
                         # --- END OF STUDENT IMPLEMENTATION ---
 
                     # After iterating through all key tiles, normalize the output
