@@ -71,11 +71,9 @@ def _flash_attention_forward_gqa_kernel(
                  (k_offsets[None, :] * k_stride_s + tl.arange(0, HEAD_DIM)[:, None])
         k_block = tl.load(k_ptrs, mask=k_offsets[None, :] < SEQ_LEN, other=0.0)
 
-
         v_ptrs = V_ptr + batch_idx * v_stride_b + kv_head_idx * v_stride_h + \
                  (k_offsets[:, None] * v_stride_s + tl.arange(0, HEAD_DIM)[None, :])
         v_block = tl.load(v_ptrs, mask=k_offsets[:, None] < SEQ_LEN, other=0.0)
-
 
         # 2. Compute the attention scores (S_ij).
         s_ij = tl.dot(q_block, k_block)
@@ -111,7 +109,6 @@ def _flash_attention_forward_gqa_kernel(
         k_ptrs = K_ptr + batch_idx * k_stride_b + kv_head_idx * k_stride_h + \
                  (k_offsets[None, :] * k_stride_s + tl.arange(0, HEAD_DIM)[:, None])
         k_block = tl.load(k_ptrs, mask=k_offsets[None, :] < SEQ_LEN, other=0.0)
-
 
         v_ptrs = V_ptr + batch_idx * v_stride_b + kv_head_idx * v_stride_h + \
                  (k_offsets[:, None] * v_stride_s + tl.arange(0, HEAD_DIM)[None, :])
